@@ -111,17 +111,18 @@ def select_barbell_detections(cap, model):
     
     # Get detections for first frame
     first_frame_rgb = cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB)
-    first_results = model(first_frame_rgb)[0]
+    first_results = model.track(first_frame_rgb, persist=True)[0] 
     
     # Create a list of detected barbells
     barbell_boxes = []
-    for i, box in enumerate(first_results.boxes):
-        if int(box.cls[0]) == 0:  # Assuming barbell is class 0, adjust if needed
+    for box in first_results.boxes:
+        if int(box.cls[0]) == 0: 
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
             conf = float(box.conf[0])
+            track_id = int(box.id[0]) if box.id is not None else None  # Get the tracking ID
             barbell_boxes.append({
-                'id': i,
+                'id': track_id, 
                 'box': (x1, y1, x2, y2),
                 'center': (center_x, center_y),
                 'conf': conf
@@ -141,7 +142,7 @@ def select_barbell_detections(cap, model):
     for bb in barbell_boxes:
         x1, y1, x2, y2 = bb['box']
         cv2.rectangle(first_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(first_frame, f"Conf: {bb['conf']:.2f}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.putText(first_frame, f"ID: {bb['id']} Conf: {bb['conf']:.2f}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
     
     # Function to handle mouse clicks
     selected_barbell = None
@@ -164,7 +165,7 @@ def select_barbell_detections(cap, model):
     
     cv2.destroyAllWindows()
     
-    print(f"Selected barbell: {selected_barbell['center']} with confidence {selected_barbell['conf']:.2f}")
+    print(f"Selected barbell ID: {selected_barbell['id']} with confidence {selected_barbell['conf']:.2f}")
     return selected_barbell
 
 if __name__ == "__main__":
