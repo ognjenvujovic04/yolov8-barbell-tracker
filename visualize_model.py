@@ -3,6 +3,7 @@ import numpy as np
 import time
 import datetime
 import os
+from PIL import Image, ImageDraw
 from ultralytics import YOLO
 
 def process_video(model_path, video_path, output_video, target_fps=15, trail_length=20):
@@ -47,14 +48,15 @@ def process_video(model_path, video_path, output_video, target_fps=15, trail_len
             image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = model(image)[0]
 
-            dimmed_image = (image * 0.5).astype(np.uint8)
+            # Convert to PIL Image for better transparency support
+            pil_image = Image.fromarray((image * 0.5).astype(np.uint8))
+            
+            overlay = Image.new('RGBA', pil_image.size, (0, 0, 0, 0))
+            draw = ImageDraw.Draw(overlay)
 
             for box in results.boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 
-                # Draw bounding box
-                cv2.rectangle(dimmed_image, (x1, y1), (x2, y2), (255, 0, 0), 2)
-
                 # Compute center of bounding box
                 center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
                 previous_dots.append((center_x, center_y))  
@@ -62,17 +64,32 @@ def process_video(model_path, video_path, output_video, target_fps=15, trail_len
                 # Keep only the last 'trail_length' dots
                 if len(previous_dots) > trail_length:
                     previous_dots.pop(0)
+            
+            # Draw the bounding boxes on the main image
+            pil_draw = ImageDraw.Draw(pil_image)
+            for box in results.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                pil_draw.rectangle([(x1, y1), (x2, y2)], outline=(255, 0, 0), width=2)
 
-            # Draw previous dots and connect them with lines
+            # Draw previous dots and connect them with lines on the overlay
             for i in range(1, len(previous_dots)):
-                alpha = 1 - (i / len(previous_dots)) 
-                faded_color = (int(255 * (1 - alpha)), 0, 0)
-
-                cv2.line(dimmed_image, previous_dots[i - 1], previous_dots[i], faded_color, 12)
-                cv2.circle(dimmed_image, previous_dots[i], radius=6, color=faded_color, thickness=-1)
-
+                # Calculate transparency (0-255)
+                alpha = int(255 * ((i / len(previous_dots))))
+                
+                # Draw line with transparency
+                draw.line([previous_dots[i-1], previous_dots[i]], fill=(255, 0, 0, alpha), width=13)
+                
+                # Draw circle with transparency
+                x, y = previous_dots[i]
+                draw.ellipse((x-6, y-6, x+6, y+6), fill=(255, 0, 0, alpha))
+            
+            pil_image = pil_image.convert('RGBA')
+            composited = Image.alpha_composite(pil_image, overlay)
+            
+            final_image = np.array(composited.convert('RGB'))
+            
             # Convert back to BGR for saving
-            output_frame = cv2.cvtColor(dimmed_image, cv2.COLOR_RGB2BGR)
+            output_frame = cv2.cvtColor(final_image, cv2.COLOR_RGB2BGR)
             out.write(output_frame)
 
     cap.release()
@@ -84,6 +101,6 @@ if __name__ == "__main__":
     video_path = "test_video/video.mp4"
     output_video = "output/output_video.mp4"
     start_time = time.time()
-    process_video(model_path, video_path, output_video, 15, 30)
+    process_video(model_path, video_path, output_video, 15, 40)
     end_time = time.time()
     print(f"Processing time: {end_time - start_time} seconds")
