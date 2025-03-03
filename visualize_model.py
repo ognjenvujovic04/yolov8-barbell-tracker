@@ -34,6 +34,10 @@ def process_video(model_path, video_path, output_video, target_fps=15, trail_len
     frame_time = 1000 / target_fps
     last_frame_time = 0
     previous_dots = []
+    
+    selected_barbell = select_barbell_detections(cap, model)
+    if not selected_barbell:
+        print("Error: No barbell selected.")
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -95,6 +99,56 @@ def process_video(model_path, video_path, output_video, target_fps=15, trail_len
     cap.release()
     out.release()
     print(f"Output video saved as {output_video}")
+    
+def select_barbell_detections(cap, model):
+    # Get first frame for barbell selection
+    ret, first_frame = cap.read()
+    if not ret:
+        print("Error: Could not read first frame.")
+        return
+    
+    # Reset the video capture to start
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    
+    # Get detections for first frame
+    first_frame_rgb = cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB)
+    first_results = model(first_frame_rgb)[0]
+    
+    # Create a list of detected barbells
+    barbell_boxes = []
+    for i, box in enumerate(first_results.boxes):
+        if int(box.cls[0]) == 0:  # Assuming barbell is class 0, adjust if needed
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
+            conf = float(box.conf[0])
+            barbell_boxes.append({
+                'id': i,
+                'box': (x1, y1, x2, y2),
+                'center': (center_x, center_y),
+                'conf': conf
+            })
+    
+    # If no barbells detected
+    if not barbell_boxes:
+        print("No barbells detected in the first frame.")
+        return
+    
+    # User selection of barbell
+    print("\nDetected barbells in first frame:")
+    for i, bb in enumerate(barbell_boxes):
+        print(f"{i+1}. Barbell at position {bb['center']} with confidence {bb['conf']:.2f}")
+    
+    selection = -1
+    while selection < 0 or selection >= len(barbell_boxes):
+        try:
+            selection = int(input(f"Select a barbell to track (1-{len(barbell_boxes)}): ")) - 1
+        except ValueError:
+            print("Please enter a valid number.")
+            
+    selected_barbell = barbell_boxes[selection]
+    print(f"Selected barbell: {selected_barbell['center']} with confidence {selected_barbell['conf']:.2f}")
+    return selected_barbell
+    
 
 if __name__ == "__main__":
     model_path = "best.pt"
