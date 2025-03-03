@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 import time
 import datetime
-import os
 from PIL import Image, ImageDraw
 from ultralytics import YOLO
 
@@ -133,22 +132,40 @@ def select_barbell_detections(cap, model):
         print("No barbells detected in the first frame.")
         return
     
-    # User selection of barbell
-    print("\nDetected barbells in first frame:")
-    for i, bb in enumerate(barbell_boxes):
-        print(f"{i+1}. Barbell at position {bb['center']} with confidence {bb['conf']:.2f}")
+    # If only one barbell detected
+    if len(barbell_boxes) == 1:
+        print("Only one barbell detected.")
+        return barbell_boxes[0]
     
-    selection = -1
-    while selection < 0 or selection >= len(barbell_boxes):
-        try:
-            selection = int(input(f"Select a barbell to track (1-{len(barbell_boxes)}): ")) - 1
-        except ValueError:
-            print("Please enter a valid number.")
-            
-    selected_barbell = barbell_boxes[selection]
+    # Draw detected barbells on the frame
+    for bb in barbell_boxes:
+        x1, y1, x2, y2 = bb['box']
+        cv2.rectangle(first_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.putText(first_frame, f"Conf: {bb['conf']:.2f}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    
+    # Function to handle mouse clicks
+    selected_barbell = None
+    def mouse_callback(event, x, y, flags, param):
+        nonlocal selected_barbell
+        if event == cv2.EVENT_LBUTTONDOWN:
+            for bb in barbell_boxes:
+                x1, y1, x2, y2 = bb['box']
+                if x1 <= x <= x2 and y1 <= y <= y2:
+                    selected_barbell = bb
+                    break
+    
+    # Display the frame and wait for user selection
+    cv2.imshow("Select a Barbell", first_frame)
+    cv2.setMouseCallback("Select a Barbell", mouse_callback)
+    
+    print("Click on the barbell you want to track.")
+    while selected_barbell is None:
+        cv2.waitKey(1)
+    
+    cv2.destroyAllWindows()
+    
     print(f"Selected barbell: {selected_barbell['center']} with confidence {selected_barbell['conf']:.2f}")
     return selected_barbell
-    
 
 if __name__ == "__main__":
     model_path = "best.pt"
