@@ -4,7 +4,7 @@ import torch
 from ultralytics import YOLO
 from pathlib import Path
 
-def train_barbell_detector(data_yaml, epochs=50, patience=15, batch_size=8, img_size=768):
+def train_barbell_detector(data_yaml, epochs=30, patience=15, batch_size=8, img_size=640):
     """
     Train YOLOv8n model on barbell dataset with 720×900 frames
     
@@ -49,7 +49,7 @@ def train_barbell_detector(data_yaml, epochs=50, patience=15, batch_size=8, img_
     print(f"Training complete! Model saved in runs/detect/barbell_detector")
     return model
 
-def validate_model(model, data_yaml, img_size=768):
+def validate_model(model, data_yaml, img_size=640):
     """
     Validate the trained model
     
@@ -80,8 +80,8 @@ def main():
         exit("Dataset not found!")
     
     # Choose image size based on original 720×900
-    # Using 768 as it's a multiple of 32 (YOLOv8 works best with sizes divisible by 32)
-    img_size = 768
+    # Using 640 as it's a multiple of 32 (YOLOv8 works best with sizes divisible by 32)
+    img_size = 640
     
     # Adjust batch size based on memory constraints
     # Smaller batch size for larger images to avoid out-of-memory errors
