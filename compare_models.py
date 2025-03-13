@@ -21,8 +21,8 @@ def load_image(image_path):
     
     return img_rgb, img_pil, img_cv.shape[:2]  # Return height, width
 
-def run_pytorch_inference(model_path, img):
-    """Run inference with PyTorch YOLOv8 model"""
+def run_inference(model_path, img):
+    """Run inference with YOLOv8 model"""
     # Load the model
     model = YOLO(model_path)
     
@@ -36,38 +36,6 @@ def run_pytorch_inference(model_path, img):
     inference_time = time.time() - start_time
     
     return results[0], inference_time  # Return the first result and inference time
-
-def run_tflite_inference(model_path, img_pil, input_shape=(768, 768)):
-    """Run inference with TFLite YOLOv8 model"""
-    # Load TFLite model
-    interpreter = tf.lite.Interpreter(model_path=model_path)
-    interpreter.allocate_tensors()
-    
-    # Get input and output details
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
-    
-    # Preprocess image (resize to the expected input shape)
-    img_resized = img_pil.resize(input_shape)
-    input_data = np.array(img_resized, dtype=np.float32) / 255.0
-    input_data = np.expand_dims(input_data, axis=0)
-    
-    # Set input tensor
-    interpreter.set_tensor(input_details[0]['index'], input_data)
-    
-    # Start timing
-    start_time = time.time()
-    
-    # Run inference
-    interpreter.invoke()
-    
-    # End timing
-    inference_time = time.time() - start_time
-    
-    # Get output tensor
-    output_data = interpreter.get_tensor(output_details[0]['index'])
-    
-    return output_data, inference_time
 
 def process_tflite_output(output_data, img_shape, conf_threshold=0.025):
     """Process TFLite output to extract bounding boxes and confidence values"""
@@ -118,7 +86,7 @@ def main():
     
     # Run PyTorch inference
     print("\n=== PyTorch YOLOv8 Results ===")
-    pytorch_results, pytorch_time = run_pytorch_inference(pytorch_model_path, img_rgb)
+    pytorch_results, pytorch_time = run_inference(pytorch_model_path, img_rgb)
     
     # Print PyTorch results
     print(f"Inference time: {pytorch_time:.4f} seconds")
@@ -135,19 +103,16 @@ def main():
     
     # Run TFLite inference
     print("\n=== TFLite YOLOv8 Results ===")
-    tflite_output, tflite_time = run_tflite_inference(tflite_model_path, img_pil)
-    
-    # Process TFLite output
-    tflite_detections = process_tflite_output(tflite_output, img_shape)
+    tflite_results, tflite_time = run_inference(tflite_model_path, img_pil)
     
     # Print TFLite results
     print(f"Inference time: {tflite_time:.4f} seconds")
-    print(f"Number of detections: {len(tflite_detections)}")
+    print(f"Number of detections: {len(tflite_results.boxes)}")
     print("\nBounding Boxes:")
     
-    for i, detection in enumerate(tflite_detections):
-        x1, y1, x2, y2 = detection["bbox"]
-        conf = detection["confidence"]
+    for i, box in enumerate(tflite_results.boxes):
+        x1, y1, x2, y2 = map(int, box.xyxy[0])
+        conf = float(box.conf[0])
         
         print(f"Detection {i+1}:")
         print(f"  Confidence: {conf:.4f}")
