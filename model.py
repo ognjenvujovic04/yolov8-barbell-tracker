@@ -81,7 +81,7 @@ def main():
     
     # Choose image size based on original 720×900
     # Using 640 as it's a multiple of 32 (YOLOv8 works best with sizes divisible by 32)
-    img_size = 640
+    img_size = 320
     
     # Adjust batch size based on memory constraints
     # Smaller batch size for larger images to avoid out-of-memory errors
