@@ -165,6 +165,6 @@ if __name__ == "__main__":
     video_path = "test_video/video.mp4"
     output_video = "output/output_video.mp4"
     start_time = time.time()
-    process_video(model_path, video_path, output_video, 15, 10)
+    process_video(model_path, video_path, output_video, 25, 15)
     end_time = time.time()
     print(f"Processing time: {end_time - start_time} seconds")

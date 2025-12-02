@@ -4,7 +4,7 @@ from ultralytics import YOLO
 model = YOLO("best.pt")
 
 # Export the model to TFLite format
-model.export(format="tflite", int8=True, imgsz=640)
+model.export(format="tflite", imgsz=320)
 
 # Load the exported TFLite model
 tflite_model = YOLO("best_saved_model/best_float32.tflite")
