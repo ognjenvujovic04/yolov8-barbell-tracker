@@ -14,11 +14,9 @@ A lightweight YOLOv8n-based barbell detection and tracking system optimized for 
 ## Demo
 
 **Input Video:**
-
 ![Input Video](assets/input_video.gif)
 
 **Output Video with Tracking:**
-
 ![Output Video](assets/output_video.gif)
 
 **Barbell Selection**
