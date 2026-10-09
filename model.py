@@ -81,7 +81,7 @@ def main():
     # Train model
     model = train_barbell_detector(
         data_yaml=data_yaml,
-        epochs=1,
+        epochs=30,
         patience=8,
         batch_size=batch_size,
         img_size=img_size
