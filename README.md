@@ -25,7 +25,7 @@ A lightweight YOLOv8n-based barbell detection and tracking system optimized for 
 ## Requirements
 
 ```bash
-pip install ultralytics opencv-python numpy pillow torch pyyaml tensorflow
+pip install -r requirements.txt
 ```
 
 ## Usage
