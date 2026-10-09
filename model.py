@@ -88,8 +88,7 @@ def main():
     )
     
     print_metrics(model)
-    
-    model.export(format='tflite', imgsz=320)
+
     print("\nDone! Weights saved in runs/detect/barbell_detector/weights/")
     
 if __name__ == "__main__":

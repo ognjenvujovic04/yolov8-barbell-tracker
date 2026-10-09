@@ -128,7 +128,7 @@ names: ['barbell']
 1. **Training** (`model.py`): 
    - Loads pre-trained YOLOv8n weights
    - Fine-tunes on barbell dataset
-   - Validates and exports the model
+   - Validates the model (export is done with `convert.py`)
 
 2. **Selection** (`visualize_model.py`):
    - Detects all barbells in the first frame
