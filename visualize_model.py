@@ -1,16 +1,31 @@
 import cv2
 import numpy as np
+import re
 import time
 import datetime
+from pathlib import Path
 from PIL import Image, ImageDraw
 from ultralytics import YOLO
 
-def process_video(model_path, video_path, output_video, target_fps=15, trail_length=20):
-    model = YOLO(model_path)
+def pick_model(video_path, vertical_model, horizontal_model):
+    """Choose the vertical or horizontal model (and its input size) from the video's shape."""
+    cap = cv2.VideoCapture(video_path)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap.release()
+    model_path = vertical_model if height >= width else horizontal_model
+    # Exported models have a fixed input, named like barbell_vertical_384x224_float32.tflite
+    size = re.search(r"_(\d+)x(\d+)_", Path(model_path).name)
+    imgsz = [int(size.group(1)), int(size.group(2))] if size else 384
+    return model_path, imgsz
+
+def process_video(model_path, video_path, output_video, target_fps=15, trail_length=20, imgsz=384):
+    model = YOLO(model_path, task="detect")
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print("Error: Could not open video.")
         return
+    print(f"Model: {model_path} (input {imgsz})")
 
     print("Video loaded successfully.")
 
@@ -34,7 +49,7 @@ def process_video(model_path, video_path, output_video, target_fps=15, trail_len
     last_frame_time = 0
     previous_dots = []
 
-    selected_barbell = select_barbell_detections(cap, model)
+    selected_barbell = select_barbell_detections(cap, model, imgsz)
     if not selected_barbell:
         print("Error: No barbell selected.")
         return
@@ -53,7 +68,7 @@ def process_video(model_path, video_path, output_video, target_fps=15, trail_len
             last_frame_time = current_time
             
             image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = model.track(image, persist=True)[0] 
+            results = model.track(image, persist=True, imgsz=imgsz)[0]
 
             # Convert to PIL Image for better transparency support
             pil_image = Image.fromarray((image * 0.5).astype(np.uint8))
@@ -100,7 +115,7 @@ def process_video(model_path, video_path, output_video, target_fps=15, trail_len
     out.release()
     print(f"Output video saved as {output_video}")
 
-def select_barbell_detections(cap, model):
+def select_barbell_detections(cap, model, imgsz=384):
     ret, first_frame = cap.read()
     if not ret:
         print("Error: Could not read first frame.")
@@ -109,7 +124,7 @@ def select_barbell_detections(cap, model):
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     first_frame_rgb = cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB)
-    first_results = model.track(first_frame_rgb, persist=True)[0]
+    first_results = model.track(first_frame_rgb, persist=True, imgsz=imgsz)[0]
 
     barbell_boxes = []
     for box in first_results.boxes:
@@ -161,10 +176,12 @@ def select_barbell_detections(cap, model):
     return selected_barbell
 
 if __name__ == "__main__":
-    model_path = "best.pt"
+    vertical_model = "exports/barbell_vertical_384x224_float32.tflite"
+    horizontal_model = "exports/barbell_horizontal_224x384_float32.tflite"
     video_path = "test_video/video.mp4"
     output_video = "output/output_video.mp4"
     start_time = time.time()
-    process_video(model_path, video_path, output_video, 25, 15)
+    model_path, imgsz = pick_model(video_path, vertical_model, horizontal_model)
+    process_video(model_path, video_path, output_video, 25, 15, imgsz)
     end_time = time.time()
     print(f"Processing time: {end_time - start_time} seconds")
