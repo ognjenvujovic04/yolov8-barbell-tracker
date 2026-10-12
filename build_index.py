@@ -12,6 +12,7 @@ Run from the project root in WSL:
 """
 
 import argparse
+import csv
 import hashlib
 import pickle
 from collections import Counter, defaultdict
@@ -29,6 +30,16 @@ from dataset_utils import (
 SCAN_CACHE = WORK_DIR / "scan_cache.pkl"
 TRIAGE_DIR = WORK_DIR / "triage"
 SHEET_USES = {"pos", "triage"}
+# Pairs reviewed by hand: same=yes puts both videos in one group (same footage or session)
+MANUAL_LINKS = WORK_DIR / "manual_links.csv"
+MANUAL_LINK_FIELDS = ["video_a", "video_b", "same"]
+
+
+def manual_links() -> list[tuple[str, str]]:
+    if not MANUAL_LINKS.exists():
+        return []
+    with open(MANUAL_LINKS, newline="", encoding="utf-8") as f:
+        return [(r["video_a"], r["video_b"]) for r in csv.DictReader(f) if r["same"] == "yes"]
 
 # archive test exercises that use a regular barbell, need a per-clip look, or are excluded
 POS_EXERCISES = {
@@ -233,6 +244,16 @@ def build_rows(scans: dict[str, dict]) -> list[dict]:
             seen_md5.add(rows[vid]["md5"])
             if vid != primary and (exact or rows[vid]["source"] != rows[primary]["source"]):
                 rows[vid]["use"] = "dup"
+
+    # Manual links (same footage or session, reviewed by hand) only merge groups, so both videos
+    # land in one split; they don't mark copies, both videos stay usable
+    for a, b in manual_links():
+        if a in rows and b in rows and rows[a]["group"] != rows[b]["group"]:
+            old = {rows[a]["group"], rows[b]["group"]}
+            new = min(old, key=natural_key)
+            for r in rows.values():
+                if r["group"] in old:
+                    r["group"] = new
     return list(rows.values())
 
 
