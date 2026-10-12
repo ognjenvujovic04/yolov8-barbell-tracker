@@ -226,12 +226,12 @@ def build_rows(scans: dict[str, dict]) -> list[dict]:
         # Exact copies and copies from another source (archive clips that dataset1 was made from,
         # TikTok originals of dataset1 clips, archive test/test copies of raw_data) add no new
         # footage: keep one primary video. Near-duplicates within a source are separate takes.
-        primary = min(vids, key=lambda v: (source_rank[rows[v]["source"]], natural_key(v)))
-        for vid in vids:
-            if vid == primary:
-                continue
-            exact = rows[vid]["md5"] == rows[primary]["md5"]
-            if exact or rows[vid]["source"] != rows[primary]["source"]:
+        ordered = sorted(vids, key=lambda v: (source_rank[rows[v]["source"]], natural_key(v)))
+        primary, seen_md5 = ordered[0], set()
+        for vid in ordered:
+            exact = rows[vid]["md5"] in seen_md5  # byte copy of any video kept before it
+            seen_md5.add(rows[vid]["md5"])
+            if vid != primary and (exact or rows[vid]["source"] != rows[primary]["source"]):
                 rows[vid]["use"] = "dup"
     return list(rows.values())
 
