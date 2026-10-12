@@ -103,6 +103,7 @@ def evaluate(model_path: Path, data: Path, split: str, imgsz: int, device: str |
         data=str(data_yaml),
         split="test",
         imgsz=imgsz,
+        end2end=False,  # YOLO26: score the one-to-many head that convert.py exports
         device=device,
         verbose=True,
         plots=True,
