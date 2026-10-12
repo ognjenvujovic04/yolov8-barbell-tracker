@@ -1,3 +1,5 @@
+import argparse
+
 import yaml
 import torch
 from ultralytics import YOLO
@@ -9,30 +11,34 @@ def resolve_data_yaml(yaml_path: Path) -> str:
     with open(yaml_path) as f:
         cfg = yaml.safe_load(f)
     cfg['path'] = str(data_dir)
-    resolved = data_dir / 'data.resolved.yaml'
+    resolved = data_dir / f'{yaml_path.stem}.resolved.yaml'
     with open(resolved, 'w') as f:
         yaml.dump(cfg, f, sort_keys=False)
     return str(resolved)
 
-def train_barbell_detector(data_yaml, epochs=30, patience=15, batch_size=8, img_size=320):
+def train_barbell_detector(data_yaml, weights='yolo26n.pt', epochs=100, patience=20, batch_size=16,
+                           img_size=384, run_name='barbell_detector'):
     """
-    Train YOLOv8n model on barbell dataset at 320×320.
-    
+    Train the nano barbell detector (student model used in the app).
+
+    Trains square (with mosaic) at img_size. The model is later exported with a rectangular
+    input of the same long side (e.g. 384×224), so objects keep the scale seen in training.
+
     Args:
         data_yaml (str): Path to data.yaml file
+        weights (str): Starting weights: yolo26n.pt, yolov8n.pt or a base run's best.pt to fine-tune
         epochs (int): Number of training epochs
         patience (int): Early stopping patience
         batch_size (int): Batch size for training
-        img_size (int): Image size for training (320×320)
-        
+        img_size (int): Training image size (long side of the exported input)
+        run_name (str): Run name under runs/detect/
+
     Returns:
-        model: Trained YOLOv8 model
+        model: Trained YOLO model
     """
-    # Load YOLOv8n model
-    model = YOLO('yolov8n.pt')
-    
-    # Train the model
-    print(f"Training YOLOv8n model on barbell dataset...")
+    model = YOLO(weights)
+
+    print(f"Training {weights} on barbell dataset...")
     print(f"Using data config: {data_yaml}")
     print(f"Training at {img_size}×{img_size}")
     
@@ -51,12 +57,12 @@ def train_barbell_detector(data_yaml, epochs=30, patience=15, batch_size=8, img_
         patience=patience,
         batch=batch_size,
         imgsz=img_size,
-        name='barbell_detector',
+        name=run_name,
         verbose=True,
         device=device
     )
-    
-    print(f"Training complete! Model saved in runs/detect/barbell_detector")
+
+    print(f"Training complete! Model saved in {model.trainer.save_dir}")
     return model
 
 def print_metrics(model):
@@ -68,28 +74,37 @@ def print_metrics(model):
     print(f"  mAP@0.5:  {metrics.map50:.4f}")
     print(f"  mAP@0.95: {metrics.map:.4f}")
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train the nano barbell detector used in the app.")
+    parser.add_argument('--data', type=Path, default=Path(__file__).parent / 'datasets' / 'v2' / 'all.yaml',
+                        help="Dataset yaml (default: datasets/v2/all.yaml)")
+    parser.add_argument('--weights', default='yolo26n.pt',
+                        help="Starting weights: yolo26n.pt, yolov8n.pt or a base run's best.pt (default: yolo26n.pt)")
+    parser.add_argument('--imgsz', type=int, default=384, help="Training image size (default: 384)")
+    parser.add_argument('--epochs', type=int, default=100, help="Training epochs (default: 100)")
+    parser.add_argument('--patience', type=int, default=20, help="Early stopping patience (default: 20)")
+    parser.add_argument('--batch', type=int, default=16, help="Batch size (default: 16, at most 4 on CPU)")
+    parser.add_argument('--name', default='barbell_detector', help="Run name under runs/detect/")
+    return parser.parse_args()
+
 def main():
-    yaml_path = Path(__file__).parent / 'data' / 'data.yaml'
-    if not yaml_path.exists():
-        exit("Dataset not found!")
-    data_yaml = resolve_data_yaml(yaml_path)
+    args = parse_args()
+    if not args.data.exists():
+        exit(f"Dataset not found: {args.data}")
+    data_yaml = resolve_data_yaml(args.data)
     print(f"Using dataset config: {data_yaml}")
-    
-    img_size = 320
-    batch_size = 8
-    
-    # Train model
+
     model = train_barbell_detector(
         data_yaml=data_yaml,
-        epochs=30,
-        patience=8,
-        batch_size=batch_size,
-        img_size=img_size
+        weights=args.weights,
+        epochs=args.epochs,
+        patience=args.patience,
+        batch_size=args.batch,
+        img_size=args.imgsz,
+        run_name=args.name,
     )
-    
+
     print_metrics(model)
 
-    print("\nDone! Weights saved in runs/detect/barbell_detector/weights/")
-    
 if __name__ == "__main__":
     main()
