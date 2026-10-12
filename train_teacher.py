@@ -1,3 +1,5 @@
+import argparse
+
 import torch
 from pathlib import Path
 from ultralytics import YOLO
@@ -29,17 +31,19 @@ def check_gpu_vram() -> tuple[str, float | None]:
 
 def train_teacher(
     data_yaml: str,
-    epochs: int = 30,
-    patience: int = 15,
+    epochs: int = 100,
+    patience: int = 20,
     batch_size: int = 2,
     img_size: int = 640,
     model_name: str = TEACHER_MODEL,
+    run_name: str = "barbell_teacher",
 ) -> YOLO:
     """
-    Fine-tune YOLO26l on the barbell dataset at 640x640 for pseudo-label generation.
+    Fine-tune YOLO26l on the barbell dataset at 640x640 for pre-labelling new frames.
 
     Tuned for RTX 3050 (4 GB VRAM): batch=2, AMP, gradient accumulation (nbs=64).
-    Light on-line augmentation (mosaic only); images are already augmented in Roboflow.
+    The v2 frames are not pre-augmented, so Ultralytics' default on-line augmentation is used.
+    model_name can be a previous teacher's best.pt to fine-tune it on more data.
     """
     device, _ = check_gpu_vram()
     if device == "cpu":
@@ -59,29 +63,46 @@ def train_teacher(
         epochs=epochs,
         patience=patience,
         device=device,
-        name="barbell_teacher",
+        name=run_name,
         amp=True,
         cache=True,
         workers=2,
         verbose=True,
-        mosaic=1.0,
-        mixup=0.0,
-        copy_paste=0.0,
     )
 
-    print("Training complete! Weights saved in runs/detect/barbell_teacher/")
+    print(f"Training complete! Weights saved in {model.trainer.save_dir}")
     return model
 
 
-def main():
-    yaml_path = Path(__file__).parent / "data" / "data.yaml"
-    if not yaml_path.exists():
-        raise SystemExit("Dataset not found! Expected data/data.yaml")
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train the YOLO26l teacher used to pre-label frames.")
+    parser.add_argument(
+        "--data",
+        type=Path,
+        default=Path(__file__).parent / "datasets" / "v2" / "all.yaml",
+        help="Dataset yaml (default: datasets/v2/all.yaml)",
+    )
+    parser.add_argument(
+        "--weights",
+        default=TEACHER_MODEL,
+        help=f"Starting weights: {TEACHER_MODEL} or a previous teacher's best.pt (default: {TEACHER_MODEL})",
+    )
+    parser.add_argument("--epochs", type=int, default=100, help="Training epochs (default: 100)")
+    parser.add_argument("--name", default="barbell_teacher", help="Run name under runs/detect/")
+    return parser.parse_args()
 
-    data_yaml = resolve_data_yaml(yaml_path)
+
+def main():
+    args = parse_args()
+    if not args.data.exists():
+        raise SystemExit(f"Dataset not found! Expected {args.data}")
+
+    data_yaml = resolve_data_yaml(args.data)
     print(f"Using dataset config: {data_yaml}")
 
-    model = train_teacher(data_yaml=data_yaml)
+    model = train_teacher(
+        data_yaml=data_yaml, epochs=args.epochs, model_name=args.weights, run_name=args.name
+    )
     print_metrics(model)
 
 
