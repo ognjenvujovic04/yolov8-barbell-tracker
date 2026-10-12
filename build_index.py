@@ -8,6 +8,7 @@ in the same split. Re-running keeps manual edits of the use/view/split columns.
 
 Run from the project root in WSL:
     python3 build_index.py
+    python3 build_index.py --sheets   # also write contact sheets for the clip triage
 """
 
 import argparse
@@ -21,11 +22,13 @@ import numpy as np
 
 from dataset_utils import (
     BAR_THRESH, RAW_DIR, SOURCES, VIDEO_EXTS, VIDEOS_CSV, WORK_DIR,
-    content_box, dhash, natural_key, orientation, read_videos, split_source,
+    content_box, dhash, natural_key, orientation, parse_crop, read_videos, split_source,
     video_id, write_videos,
 )
 
 SCAN_CACHE = WORK_DIR / "scan_cache.pkl"
+TRIAGE_DIR = WORK_DIR / "triage"
+SHEET_USES = {"pos", "triage"}
 
 # archive test exercises that use a regular barbell, need a per-clip look, or are excluded
 POS_EXERCISES = {
@@ -271,9 +274,40 @@ def print_summary(rows: list[dict]) -> None:
         print(f"  {g}: {', '.join(sorted(multi[g], key=natural_key))}")
 
 
+def contact_sheet(row: dict) -> None:
+    """Save a 3x2 grid of frames (cropped to the content) for deciding a clip's view and use."""
+    x0, y0, x1, y1 = parse_crop(row["crop"])
+    cap = cv2.VideoCapture(str(RAW_DIR / row["path"]))
+    n = int(row["frames"])
+    tiles = []
+    for f in np.linspace(0.05 * n, 0.95 * max(n - 1, 0), 6).astype(int):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(f))
+        ok, frame = cap.read()
+        tile = frame[y0:y1, x0:x1] if ok else np.zeros((y1 - y0, x1 - x0, 3), np.uint8)
+        tiles.append(cv2.resize(tile, (round(240 * tile.shape[1] / tile.shape[0]), 240)))
+    cap.release()
+    grid = np.vstack([np.hstack(tiles[:3]), np.hstack(tiles[3:])])
+    header = np.full((32, grid.shape[1], 3), 255, np.uint8)
+    title = f"{row['video_id']}  use={row['use']}  {row['exercise'] or row['source']}  {row['orientation']}  {row['dur']}s"
+    cv2.putText(header, title, (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1, cv2.LINE_AA)
+    cv2.imwrite(str(TRIAGE_DIR / f"{row['video_id']}.jpg"), np.vstack([header, grid]), [cv2.IMWRITE_JPEG_QUALITY, 85])
+
+
+def write_sheets(rows: list[dict], workers: int) -> None:
+    todo = [r for r in rows if r["use"] in SHEET_USES and not (TRIAGE_DIR / f"{r['video_id']}.jpg").exists()]
+    TRIAGE_DIR.mkdir(parents=True, exist_ok=True)
+    with Pool(workers) as pool:
+        pool.map(contact_sheet, todo)
+    total = sum(1 for r in rows if r["use"] in SHEET_USES)
+    print(f"\nContact sheets: {len(todo)} new, {total} total -> {TRIAGE_DIR}")
+    print("Triage in videos.csv: view=front for front/back views; triage -> pos (straight loaded barbell) or skip.")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build datasets/work/videos.csv from the videos in ../data.")
     parser.add_argument("--workers", type=int, default=6, help="Parallel video readers (default: 6)")
+    parser.add_argument("--sheets", action="store_true",
+                        help="Also write contact sheets to datasets/work/triage/ for pos and triage videos")
     return parser.parse_args()
 
 
@@ -284,6 +318,8 @@ def main() -> None:
     rows = merge_manual_edits(build_rows(scans))
     write_videos(rows)
     print_summary(rows)
+    if args.sheets:
+        write_sheets(rows, args.workers)
 
 
 if __name__ == "__main__":
