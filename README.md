@@ -66,6 +66,7 @@ python3 prelabel.py --batch b1_eval --weights runs/detect/teacher_t1/weights/bes
 
 ```bash
 python3 build_dataset.py   # datasets/v2/{vertical,horizontal}/{train,val,test,test_hard} + vertical/horizontal/all.yaml
+                           # negative (no-barbell) frames are capped at 10% of each split (--neg-share)
 ```
 
 To find label mistakes, audit labelled frames with the latest teacher and review the flagged frames the same way:

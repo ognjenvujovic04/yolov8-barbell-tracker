@@ -10,7 +10,8 @@ override earlier ones for the same frame) and writes
 Frames are routed by the split and orientation of their video in videos.csv. Legacy
 1280x720 Roboflow frames are cropped to the video content (black bars removed).
 Boxes labelled 'ignore' are painted grey and dropped, so the model is neither
-rewarded nor punished for detecting them.
+rewarded nor punished for detecting them. Frames from negative videos are capped at
+--neg-share (10%) of each split; more background images mostly cost recall.
 
 Run from the project root in WSL:
     python3 build_dataset.py
@@ -135,6 +136,35 @@ def cap_frames(stems: list[str], limit: int) -> list[str]:
     return [stems[int(i)] for i in np.linspace(0, len(stems) - 1, limit)]
 
 
+def cap_negatives(selected: dict[str, list[str]], videos: dict[str, dict], share: float) -> int:
+    """
+    Keep frames from negative videos at most `share` of each orientation/split, so background
+    images don't dominate. Frames are taken round-robin over the videos (first frame of every
+    video, then the second, ...) to keep as many different scenes as possible.
+    Returns the number of dropped frames.
+    """
+    def key(vid: str) -> tuple[str, str]:
+        return ORIENTATIONS[videos[vid]["orientation"]], videos[vid]["split"]
+
+    dropped = 0
+    for bucket in {key(vid) for vid in selected}:
+        neg = sorted((v for v in selected if key(v) == bucket and videos[v]["use"] == "neg"), key=natural_key)
+        n_pos = sum(len(selected[v]) for v in selected if key(v) == bucket and videos[v]["use"] != "neg")
+        allowed = int(share / (1 - share) * n_pos)
+        n_neg = sum(len(selected[v]) for v in neg)
+        if n_neg <= allowed:
+            continue
+        kept = {v: [] for v in neg}
+        for i in range(max((len(selected[v]) for v in neg), default=0)):
+            for v in neg:
+                if i < len(selected[v]) and sum(map(len, kept.values())) < allowed:
+                    kept[v].append(selected[v][i])
+        for v in neg:
+            selected[v] = kept[v]
+        dropped += n_neg - allowed
+    return dropped
+
+
 def write_yamls() -> list[Path]:
     def has_images(orient: str, split: str) -> bool:
         d = V2_DIR / orient / split / "images"
@@ -158,7 +188,7 @@ def write_yamls() -> list[Path]:
     return written
 
 
-def build(max_train: int, max_eval: int) -> None:
+def build(max_train: int, max_eval: int, neg_share: float) -> None:
     videos = {r["video_id"]: r for r in read_videos()}
     frames = load_exports()
 
@@ -176,17 +206,24 @@ def build(max_train: int, max_eval: int) -> None:
         else:
             per_video[vid].append(stem)
 
+    selected = {}
+    for vid in per_video:
+        limit = max_train if videos[vid]["split"] == "train" else max_eval
+        selected[vid] = cap_frames(per_video[vid], limit)
+    dropped_neg = cap_negatives(selected, videos, neg_share)
+
     if V2_DIR.exists():
         shutil.rmtree(V2_DIR)
 
     stats = defaultdict(Counter)
     split_of_group = defaultdict(set)
-    for vid in sorted(per_video, key=natural_key):
+    for vid in sorted(selected, key=natural_key):
         video = videos[vid]
         split = video["split"]
         orient = ORIENTATIONS[video["orientation"]]
-        limit = max_train if split == "train" else max_eval
-        for stem in cap_frames(per_video[vid], limit):
+        if not selected[vid]:
+            continue
+        for stem in selected[vid]:
             frame = frames[stem]
             image = read_image(frame, stem)
             h, w = image.shape[:2]
@@ -215,6 +252,8 @@ def build(max_train: int, max_eval: int) -> None:
     for (orient, split) in sorted(stats):
         s = stats[(orient, split)]
         print(f"{orient:11} {split:9} {s['videos']:6d} {s['frames']:6d} {s['boxes']:6d} {s['empty']:6d} {s['ignored']:7d}")
+    if dropped_neg:
+        print(f"\nDropped {dropped_neg} negative-video frames to keep negatives at most {neg_share:.0%} per split")
     if skipped:
         print("\nSkipped frames: " + ", ".join(f"{k}: {v}" for k, v in sorted(skipped.items())))
     for path in write_yamls():
@@ -225,12 +264,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build datasets/v2 from reviewed CVAT exports.")
     parser.add_argument("--max-train", type=int, default=60, help="Max frames per video in train (default: 60)")
     parser.add_argument("--max-eval", type=int, default=30, help="Max frames per video in val/test (default: 30)")
+    parser.add_argument("--neg-share", type=float, default=0.1,
+                        help="Max share of frames from negative videos per split (default: 0.1)")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    build(args.max_train, args.max_eval)
+    build(args.max_train, args.max_eval, args.neg_share)
 
 
 if __name__ == "__main__":

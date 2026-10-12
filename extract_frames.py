@@ -107,7 +107,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0, help="Seed for --limit (default: 0)")
     parser.add_argument("--fps", type=float, default=1.0, help="Frames per second for pos/hard videos (default: 1)")
     parser.add_argument("--max-frames", type=int, default=30, help="Max frames per pos/hard video (default: 30)")
-    parser.add_argument("--neg-frames", type=int, default=3, help="Frames per negative video (default: 3)")
+    parser.add_argument("--neg-frames", type=int, default=2, help="Frames per negative video (default: 2)")
     parser.add_argument("--allow-repeat", action="store_true", help="Include videos already labelled or batched")
     parser.add_argument("--workers", type=int, default=6, help="Parallel video readers (default: 6)")
     return parser.parse_args()
