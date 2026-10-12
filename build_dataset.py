@@ -120,6 +120,8 @@ def convert_labels(text: str, names: list[str], size: tuple[int, int], crop: tup
             ignore.append((int(bx0), int(by0), int(round(bx1)), int(round(by1))))
         elif name == "barbell":
             boxes.append((0, (bx0 + bx1) / 2 / cw, (by0 + by1) / 2 / ch, (bx1 - bx0) / cw, (by1 - by0) / ch))
+        elif name == "check":
+            raise ValueError("Unresolved 'check' box from a label audit: make it barbell or ignore, or delete it")
         else:
             raise ValueError(f"Unknown label '{name}'")
     return boxes, ignore

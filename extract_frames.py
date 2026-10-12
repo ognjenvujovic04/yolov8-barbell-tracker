@@ -39,7 +39,7 @@ def batched_videos() -> set[str]:
     vids = set()
     for path in BATCHES_DIR.glob("*/frames.csv"):
         with open(path, newline="", encoding="utf-8") as f:
-            vids.update(r["video_id"] for r in csv.DictReader(f))
+            vids.update(r["video_id"] for r in csv.DictReader(f) if r["use"] != "audit")
     return vids
 
 
