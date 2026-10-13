@@ -94,6 +94,16 @@ python3 model.py --data datasets/v2/horizontal.yaml --weights runs/detect/studen
 
 Students train square at 384 (with mosaic) and are exported with a rectangular input of the same long side, so objects keep the scale they were trained at.
 
+#### Augmentation
+
+Augmentation is applied on-line during training and redrawn every epoch; no augmented copies are written to `datasets/` (the old Roboflow set stored 3 fixed copies per image, made before the split).
+
+- **Ultralytics defaults**: mosaic (off for the last 10 epochs), HSV (value ±40% covers the old ±15% brightness), scale ±50%, translate ±10%, horizontal flip.
+- **Added for phone videos** (`domain_augmentations()` in `model.py`, via Albumentations): motion blur (fast bar), JPEG compression (re-encoded phone / TikTok video), Gaussian noise (dim gyms). They replace the old 0.3 px blur and salt-and-pepper noise.
+- **Off**: rotation and shear (the old set used ±15° and ±7°). The axis-aligned box of a rotated round plate is larger than the plate, and the app derives cm/pixel from the box size. Also no vertical flip, no mixup, and no CLAHE pre-processing (the app feeds raw frames).
+
+`--no-domain-aug` trains with the Ultralytics defaults only, for comparison. Installing `albumentations` pulls in `opencv-python-headless`, which shadows the GUI OpenCV that `visualize_model.py` needs; if the selection window stops working, run `pip uninstall opencv-python-headless` and reinstall `opencv-python` with `--force-reinstall --no-deps`.
+
 ### 5. Evaluate
 
 ```bash
