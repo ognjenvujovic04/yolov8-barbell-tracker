@@ -1,5 +1,6 @@
 import argparse
 
+import albumentations as A
 import yaml
 import torch
 from ultralytics import YOLO
@@ -16,13 +17,29 @@ def resolve_data_yaml(yaml_path: Path) -> str:
         yaml.dump(cfg, f, sort_keys=False)
     return str(resolved)
 
+def domain_augmentations():
+    """
+    Pixel-level augmentations for phone videos of lifts, on top of Ultralytics' defaults
+    (mosaic, HSV, scale, translate, fliplr). Replaces Ultralytics' Albumentations list
+    (Blur, MedianBlur, ToGray, CLAHE at p=0.01).
+
+    Rotation and shear stay off (degrees=0, shear=0): the axis-aligned box of a rotated round
+    plate is larger than the plate, and the app derives cm/pixel from the box size.
+    """
+    return [
+        A.MotionBlur(blur_limit=(3, 9), p=0.2),             # fast bar in pulls and jerks
+        A.ImageCompression(quality_range=(40, 90), p=0.2),  # re-encoded phone / TikTok video
+        A.GaussNoise(std_range=(0.02, 0.06), p=0.1),        # sensor noise in dim gyms
+    ]
+
 def train_barbell_detector(data_yaml, weights='yolo26n.pt', epochs=100, patience=20, batch_size=16,
-                           img_size=384, run_name='barbell_detector'):
+                           img_size=384, run_name='barbell_detector', domain_aug=True):
     """
     Train the nano barbell detector (student model used in the app).
 
     Trains square (with mosaic) at img_size. The model is later exported with a rectangular
     input of the same long side (e.g. 384×224), so objects keep the scale seen in training.
+    Augmentation is on-line (redrawn every epoch); no augmented copies are written to the dataset.
 
     Args:
         data_yaml (str): Path to data.yaml file
@@ -32,6 +49,7 @@ def train_barbell_detector(data_yaml, weights='yolo26n.pt', epochs=100, patience
         batch_size (int): Batch size for training
         img_size (int): Training image size (long side of the exported input)
         run_name (str): Run name under runs/detect/
+        domain_aug (bool): Add domain_augmentations(); False keeps Ultralytics' defaults only
 
     Returns:
         model: Trained YOLO model
@@ -59,7 +77,8 @@ def train_barbell_detector(data_yaml, weights='yolo26n.pt', epochs=100, patience
         imgsz=img_size,
         name=run_name,
         verbose=True,
-        device=device
+        device=device,
+        augmentations=domain_augmentations() if domain_aug else None,
     )
 
     print(f"Training complete! Model saved in {model.trainer.save_dir}")
@@ -85,6 +104,8 @@ def parse_args():
     parser.add_argument('--patience', type=int, default=20, help="Early stopping patience (default: 20)")
     parser.add_argument('--batch', type=int, default=16, help="Batch size (default: 16, at most 4 on CPU)")
     parser.add_argument('--name', default='barbell_detector', help="Run name under runs/detect/")
+    parser.add_argument('--no-domain-aug', action='store_true',
+                        help="Train without the motion blur / compression / noise augmentations")
     return parser.parse_args()
 
 def main():
@@ -102,6 +123,7 @@ def main():
         batch_size=args.batch,
         img_size=args.imgsz,
         run_name=args.name,
+        domain_aug=not args.no_domain_aug,
     )
 
     print_metrics(model)
